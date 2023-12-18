@@ -1,0 +1,97 @@
+---
+title: "1.1 Interactive map of survey"
+author: "Aranxa Márquez"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: cosmo
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r echo=FALSE}
+library(pacman)
+p_load(flexdashboard, tidyverse, dplyr, flexdashboard, leaflet, readr, summarytools, ggplot2, sf, tigris)
+```
+
+Column
+---------------------------------------------------------------------------------------------
+
+### Interactive map of survey entries
+```{r echo=FALSE}
+
+meof_usa_survey_df <- readRDS("~/Desktop/Intro to DSc/Hackathon/Hackathon/Clippy_1/survey/meof_usa_survey_df.RDS")
+
+survey_df <- meof_usa_survey_df |> 
+  mutate(across(where(haven::is.labelled), as_factor))
+
+# Drop out the NA values in from our inputstate column 
+cleaned_survey_df <- survey_df |> 
+  filter(!is.na(inputstate))
+
+# Aggregate survey counts by state
+state_counts <- cleaned_survey_df |> 
+  group_by(inputstate) |> 
+  summarise(Total_Responses = n()) |> 
+  ungroup()
+
+# Keeping Washington DC
+new_state <- data.frame(
+  state = "District of Columbia",
+  total_responses = 0,  # Replace with the actual count if available
+  stusps = "DC"
+)
+
+# Create a color palette based on the range of survey entries
+color_palette <- colorNumeric(
+  palette = "Blues", 
+  domain = state_counts$Total_Responses
+)
+
+# Get state boundaries using tigris package
+state_boundaries <- states(progress_bar = FALSE)
+
+# Convert column names to lowercase
+colnames(state_boundaries) <- tolower(colnames(state_boundaries))
+
+# Mapping between full state names and their abbreviations, including Washington DC
+state_abbr <- data.frame(
+  state = c(state.name, "District of Columbia"),
+  stusps = c(state.abb, "DC")
+)
+
+
+?states
+# Merge state_counts with the abbreviation mapping
+state_counts <- merge(state_counts, state_abbr, by.x = "inputstate", by.y = "state", all.x = TRUE)
+
+# Merge state_boundaries and state_counts based on standardized stusps column
+merged_data <- merge(state_boundaries, state_counts, by = "stusps")
+
+merged_sf <- st_as_sf(merged_data, coords = c("intptlong", "intptlat"), crs = 4326)
+
+# Set CRS to WGS84 explicitly
+st_crs(merged_sf) <- 4326  # Setting the CRS to WGS84
+
+# Create Leaflet map
+responses_us_map <- leaflet(merged_sf) |> 
+  addProviderTiles("OpenStreetMap.Mapnik") |> 
+  addPolygons(
+    fillColor = ~color_palette(Total_Responses),  # Color palette based on Total_Responses
+    fillOpacity = 0.7,
+    color = "#BDBDBD",
+    weight = 1,
+    popup = ~paste("Total survey responses for", name, ":", Total_Responses)
+  ) |> 
+  addLegend(
+    position = "bottomright",
+    pal = color_palette,
+    values = ~Total_Responses,
+    title = "Survey Responses",
+    opacity = 0.7
+  )
+
+# Display the map
+responses_us_map
+```
+
+--------------------------------------------------------------------------------------------
