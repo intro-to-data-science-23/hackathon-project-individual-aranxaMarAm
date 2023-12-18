@@ -1,0 +1,140 @@
+---
+title: "1.1 Interactive map of survey"
+author: "Aranxa Márquez"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: cosmo
+    orientation: columns
+    vertical_layout: fill
+---
+
+Create an interactive leaflet map
+ 1. Divided by states that are colored in relation to a
+ total number of survey responses across all waves
+ Following good practice of visualization. 
+
+For this plot, you should:
+1. Employ a color palette based on the number range of survey entries.
+2. Use the OpenStreetMap.Mapnik provider tile.
+3. Create a popup that reads “Total survey responses for {State initials}: {Number}”.
+4. Add a color legend with a title.
+
+```{r echo=FALSE}
+library(pacman)
+
+p_load(flexdashboard, tidyverse, dplyr, flexdashboard, leaflet, DT, readr, summarytools, ggplot2)
+
+meof_usa_web_df <- readRDS("~/Desktop/Intro to DSc/Hackathon/Hackathon/Clippy_1/tracking/meof_usa_web_df.RDS")
+
+meof_usa_survey_df <- readRDS("~/Desktop/Intro to DSc/Hackathon/Hackathon/Clippy_1/survey/meof_usa_survey_df.RDS")
+
+time_zones <- readRDS("~/Desktop/Intro to DSc/Hackathon/Hackathon/Clippy_1/tracking/time_zones.RDS")
+> 
+
+
+```
+
+Column 
+--------------------------------------------------------------------------------------------
+
+### Interactive Table
+
+```{r}
+
+# Preparing the data: new dataframe called new_aribnb |> 1) arrange from highest to lowest price |> 2) select the first and the last 100 rows of the data, |> 3) keep only the columns for "price", "neighbourhood_group" and "room_type" 
+
+new_airbnb <- airbnb_data |> 
+  arrange(desc(price)) |> 
+  select(price, neighbourhood_group, room_type) |> 
+  slice(c(1:100, (n() - 99):n())) |> 
+  filter(price != 0) # removed this values because they looked like scam sites
+
+datatable(new_airbnb, options = list(pageLength = 10))
+```
+
+
+
+Column
+--------------------------------------------------------------------------------------------
+
+### Distribution 
+```{r}
+# b) Univariate distribution chart of one of price, adhering to good practice of plot design.
+
+ggplot(new_airbnb, aes(x = price)) +
+  geom_histogram(fill = "skyblue", color = "black", bins = 8) +
+  labs(
+    title = "Distribution of Airbnb Listing Prices",
+    x = "Price",
+    y = "Frequency"
+  ) +
+  scale_x_continuous(limits = c(10, max(new_airbnb$price))) +
+  theme_minimal()
+
+```
+
+
+### Regression
+```{r}
+
+# Subset the data
+subset_airbnb <- airbnb_data |> 
+  arrange(desc(price)) |> 
+  select(price, neighbourhood_group, room_type, number_of_reviews, reviews_per_month) |> 
+  filter(price != 0)
+
+# Create log_price column in the subset
+subset_airbnb$log_price <- log(subset_airbnb$price)
+
+# Fit the linear model using log_price
+model_airbnb <- lm(log_price ~ number_of_reviews + neighbourhood_group + reviews_per_month, data = subset_airbnb)
+
+# Treat NA's in reviews_per_month as zeros
+subset_airbnb$reviews_per_month[is.na(subset_airbnb$reviews_per_month)] <- 0
+
+# Convert neighbourhood_group to factor and relevel
+subset_airbnb$neighbourhood_group <- as.factor(subset_airbnb$neighbourhood_group)
+subset_airbnb$neighbourhood_group <- relevel(subset_airbnb$neighbourhood_group, ref = "Manhattan")
+
+# Obtain predicted log-transformed prices
+predicted_airbnb <- predict(model_airbnb, newdata = subset_airbnb)
+
+# Create a comparison plot
+plot(subset_airbnb$log_price, predicted_airbnb,
+     xlab = "Actual log(price)",
+     ylab = "Predicted log(price)",
+     main = "Actual vs Predicted log(price)")
+
+# Obtain actual prices from the subset
+actual_prices <- subset_airbnb$price
+
+# Convert predicted log prices back to original prices
+predicted_prices <- exp(predicted_airbnb)
+
+# Create a comparison plot
+plot(actual_prices, predicted_prices,
+     xlab = "Actual Price",
+     ylab = "Predicted Price",
+     main = "Actual vs Predicted Price")
+abline(0, 1, col = "red")  # Adds a diagonal line for reference
+
+```
+
+
+Column 
+--------------------------------------------------------------------------------------------
+
+### 100 Airbnb Host Location Random Sample 
+```{r}
+# d) Create an interactive `leaflet` map, mapping a random subsample of 100 of the host locations.
+
+# Sample data generation
+set.seed(42)
+airbnb_sample <- airbnb_data[sample(nrow(airbnb_data), 100), ]
+
+leaflet(airbnb_sample) |> 
+  addTiles() |> 
+  addMarkers(~longitude, ~latitude, popup = ~paste("Latitude:", latitude, "<br>Longitude:", longitude))
+
+```
+
